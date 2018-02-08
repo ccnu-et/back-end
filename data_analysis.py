@@ -50,7 +50,7 @@ async def max_canteen(request):
 
 @app.route('/api/max_window/')
 async def max_window(request):
-    # 刷卡次数前五的食堂窗口
+    # 刷卡次数前6的食堂窗口
     ccnu = request.app.config.CCNU
     breakfast = ['06:30:00', '10:30:00']
     lunch = ['10:40:00', '14:00:00']
@@ -62,9 +62,18 @@ async def max_window(request):
     orgsd_list = await handle_org(dinner, canteen)
 
     return json({
-        'breakfast': orgsb_list,
-        'lunch': orgsl_list,
-        'dinner': orgsd_list
+        'breakfast': {
+            'xAxis': [item['orgName'] for item in orgsb_list],
+            'data': [item['value'] for item in orgsb_list] 
+        },
+        'lunch': {
+            'xAxis': [item['orgName'] for item in orgsl_list],
+            'data': [item['value'] for item in orgsl_list] 
+        },
+        'dinner': {
+            'xAxis': [item['orgName'] for item in orgsd_list],
+            'data': [item['value'] for item in orgsd_list] 
+        }
     })
 
 # handle functions
@@ -74,7 +83,7 @@ async def handle_org(time, canteen):
         (canteen['dealDateTime'].str.split().str[1] <= time[-1])
     ]
     orgsx = canteen_x.groupby('orgName').size().reset_index(name="value")
-    orgsx_dict = eval(orgsx.sort_values(by=['value']).tail(6).to_json(orient='index'))
+    orgsx_dict = eval(orgsx.sort_values(by=['value']).tail(5).to_json(orient='index'))
     orgsx_list = await handle_orgName(orgsx_dict.values())
     return orgsx_list
 
