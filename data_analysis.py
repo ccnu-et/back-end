@@ -83,7 +83,7 @@ async def handle_org(time, canteen):
         (canteen['dealDateTime'].str.split().str[1] <= time[-1])
     ]
     orgsx = canteen_x.groupby('orgName').size().reset_index(name="value")
-    orgsx_dict = eval(orgsx.sort_values(by=['value']).tail(5).to_json(orient='index'))
+    orgsx_dict = eval(orgsx.sort_values(by=['value']).tail(6).to_json(orient='index'))
     orgsx_list = await handle_orgName(orgsx_dict.values())
     return orgsx_list
 
@@ -96,7 +96,7 @@ async def handle_orgName(org_list):
     
 # main
 if __name__ == '__main__':
-    from aoiklivereload import LiveReloader
-    reloader = LiveReloader()
-    reloader.start_watcher_thread()
+    # from aoiklivereload import LiveReloader
+    # reloader = LiveReloader()
+    # reloader.start_watcher_thread()
     app.run(host='0.0.0.0', port=3000, debug=True)
