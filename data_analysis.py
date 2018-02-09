@@ -17,7 +17,9 @@ async def drop_bad_data(app, loop):
         (   ccnu['orgName'].str.contains("保卫处"))       |
         (   ccnu['orgName'].str.contains("后勤处"))       |
         (   ccnu['orgName'].str.contains("信息化办公室")) |
-        (   ccnu['orgName']      ==      '华中师范大学')# |
+        (   ccnu['orgName']      ==      '华中师范大学')  |
+        (   ccnu['transMoney'] <= 0                     ) |
+        (   ccnu['transMoney'] >= 90                    )#|
         #--------------------------------------------------
     ].index
     ccnu = ccnu.drop(drop_indexes)
@@ -76,6 +78,28 @@ async def max_window(request):
         }
     })
 
+@app.route('/api/deal_data/')
+async def deal_data(request):
+    # 华师各食堂消费水平
+    ccnu = request.app.config.CCNU
+    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
+    avg_data = canteen["transMoney"].mean().round(2),
+    avg = avg_data[0]
+    low = []; high = []
+    await handle_trans(canteen, "学子餐厅", low, high, avg)
+    await handle_trans(canteen, "东一餐厅新", low, high, avg)
+    await handle_trans(canteen, "东二餐厅", low, high, avg)
+    await handle_trans(canteen, "博雅园餐厅", low, high, avg)
+    await handle_trans(canteen, "学子中西餐厅", low, high, avg)
+    await handle_trans(canteen, "桂香园餐厅新", low, high, avg)
+    await handle_trans(canteen, "沁园春餐厅", low, high, avg)
+    await handle_trans(canteen, "北区教工餐厅", low, high, avg)
+    await handle_trans(canteen, "南湖校区餐厅", low, high, avg)
+
+    return json({
+        'avg' : avg_data[0], 'low': low, 'high': high
+    })
+
 # handle functions
 async def handle_org(time, canteen):
     canteen_x = canteen[
@@ -88,15 +112,22 @@ async def handle_org(time, canteen):
     return orgsx_list
 
 async def handle_orgName(org_list):
-    # 处理窗口名称:食堂\窗口
     for item in org_list:
         orgName_list = item["orgName"].split('/')
         item["orgName"] = orgName_list[3] + orgName_list[-1]
     return org_list
-    
+
+async def handle_trans(canteen, name, low, high, avg):
+    avgd = canteen[ (canteen["canteen"]==name) ]["transMoney"].mean().round(2)
+    maxd = canteen[ (canteen["canteen"]==name) ]["transMoney"].max()
+    if avgd < avg:
+        low.append([maxd, avgd, name])
+    else:
+        high.append([maxd, avgd, name])
+
 # main
 if __name__ == '__main__':
-    # from aoiklivereload import LiveReloader
-    # reloader = LiveReloader()
-    # reloader.start_watcher_thread()
+    from aoiklivereload import LiveReloader
+    reloader = LiveReloader()
+    reloader.start_watcher_thread()
     app.run(host='0.0.0.0', port=3000, debug=True)
