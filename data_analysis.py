@@ -2,10 +2,12 @@ import pandas as pd
 from sanic import Sanic
 from sanic.response import json
 from sanic_cors import CORS, cross_origin
+from concurrent.futures import ThreadPoolExecutor
 
 app = Sanic()
 CORS(app)
 app.config.CCNU = pd.read_csv('ccnu_data.csv')
+executor = ThreadPoolExecutor(max_workers=15)
 
 @app.listener('before_server_start')
 async def drop_bad_data(app, loop):
@@ -54,14 +56,21 @@ async def max_canteen(request):
 async def max_window(request):
     # 刷卡次数前6的食堂窗口
     ccnu = request.app.config.CCNU
+    loop = request.app.loop
     breakfast = ['06:30:00', '10:30:00']
     lunch = ['10:40:00', '14:00:00']
     dinner = ['17:00:00', '21:30:00']
     canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
 
-    orgsb_list = await handle_org(breakfast, canteen)
-    orgsl_list = await handle_org(lunch, canteen)
-    orgsd_list = await handle_org(dinner, canteen)
+    orgsb_list = await loop.run_in_executor(
+        executor, handle_org, breakfast, canteen
+    )
+    orgsl_list = await loop.run_in_executor(
+        executor, handle_org, lunch, canteen
+    )
+    orgsd_list = await loop.run_in_executor(
+        executor, handle_org, dinner, canteen
+    )
 
     return json({
         'breakfast': {
@@ -82,42 +91,36 @@ async def max_window(request):
 async def deal_data(request):
     # 华师各食堂消费水平
     ccnu = request.app.config.CCNU
+    loop = request.app.loop
     canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
     avg_data = canteen["transMoney"].mean().round(2),
     avg = avg_data[0]
     low = []; high = []
-    await handle_trans(canteen, "学子餐厅", low, high, avg)
-    await handle_trans(canteen, "东一餐厅新", low, high, avg)
-    await handle_trans(canteen, "东二餐厅", low, high, avg)
-    await handle_trans(canteen, "博雅园餐厅", low, high, avg)
-    await handle_trans(canteen, "学子中西餐厅", low, high, avg)
-    await handle_trans(canteen, "桂香园餐厅新", low, high, avg)
-    await handle_trans(canteen, "沁园春餐厅", low, high, avg)
-    await handle_trans(canteen, "北区教工餐厅", low, high, avg)
-    await handle_trans(canteen, "南湖校区餐厅", low, high, avg)
-
+    for name in ["学子餐厅", "东一餐厅新", "东二餐厅", "博雅园餐厅", "学子中西餐厅",
+                 "桂香园餐厅新", "沁园春餐厅", "北区教工餐厅", "南湖校区餐厅"]:
+        await loop.run_in_executor(executor,
+                handle_trans, canteen, name, low, high, avg)
     return json({
         'avg' : avg_data[0], 'low': low, 'high': high
     })
 
-# handle functions
-async def handle_org(time, canteen):
+# cpu intensive tasks
+## running in thread pool
+def handle_org(time, canteen):
     canteen_x = canteen[
         (canteen['dealDateTime'].str.split().str[1] >= time[0]) &
         (canteen['dealDateTime'].str.split().str[1] <= time[-1])
     ]
     orgsx = canteen_x.groupby('orgName').size().reset_index(name="value")
     orgsx_dict = eval(orgsx.sort_values(by=['value']).tail(6).to_json(orient='index'))
-    orgsx_list = await handle_orgName(orgsx_dict.values())
-    return orgsx_list
-
-async def handle_orgName(org_list):
-    for item in org_list:
+    orgsx_list = []
+    for item in orgsx_dict.values():
         orgName_list = item["orgName"].split('/')
         item["orgName"] = orgName_list[3] + orgName_list[-1]
-    return org_list
+        orgsx_list.append(item)
+    return orgsx_list
 
-async def handle_trans(canteen, name, low, high, avg):
+def handle_trans(canteen, name, low, high, avg):
     avgd = canteen[ (canteen["canteen"]==name) ]["transMoney"].mean().round(2)
     maxd = canteen[ (canteen["canteen"]==name) ]["transMoney"].max()
     if avgd < avg:
@@ -127,7 +130,7 @@ async def handle_trans(canteen, name, low, high, avg):
 
 # main
 if __name__ == '__main__':
-    from aoiklivereload import LiveReloader
-    reloader = LiveReloader()
-    reloader.start_watcher_thread()
+    # from aoiklivereload import LiveReloader
+    # reloader = LiveReloader()
+    # reloader.start_watcher_thread()
     app.run(host='0.0.0.0', port=3000, debug=True)
