@@ -1,2 +1,3 @@
 **/*.pyc
 ccnu_data.csv
+venv/
