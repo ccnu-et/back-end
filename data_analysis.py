@@ -104,6 +104,23 @@ async def deal_data(request):
         'avg' : avg_data[0], 'low': low, 'high': high
     })
 
+@app.route('/api/day_canteen/')
+async def day_canteen(request):
+    # 华师主要食堂每日刷卡量对比
+    ccnu = request.app.config.CCNU
+    loop = request.app.loop
+    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
+    canteen['dealDateTime'] = pd.to_datetime(canteen['dealDateTime'])
+    canteen['day'] = canteen['dealDateTime'].apply(lambda x: x.dayofweek)
+    canteens = ["东一餐厅(旧201508)", "东一餐厅新", "东二餐厅", "北区教工餐厅",
+            "南湖校区餐厅", "博雅园餐厅", "学子中西餐厅", "学子餐厅",
+            "桂香园餐厅新", "沁园春餐厅"]
+    json_list = []
+    for name in canteens:
+        json_dict = await loop.run_in_executor(executor, handle_day, canteen, name)
+        json_list.append(json_dict)
+    return json(json_list)
+
 # cpu intensive tasks
 ## running in thread pool
 def handle_org(time, canteen):
@@ -128,6 +145,15 @@ def handle_trans(canteen, name, low, high, avg):
     else:
         high.append([maxd, avgd, name])
 
+def handle_day(canteen, name):
+    # 'dealDateTime'
+    day_count = canteen[ canteen['canteen']==name ].groupby('day').size().reset_index()
+    data_dict = eval(day_count.to_json())
+    return {
+        'name': name, 'type': 'line', 'stack': '刷卡量',
+        'data': list(list(data_dict.values())[-1].values())
+    }
+     
 # main
 if __name__ == '__main__':
     # from aoiklivereload import LiveReloader
