@@ -144,7 +144,7 @@ def handle_day(canteen, name):
     data_list = list(data_dict.values())
     return {
         'name': name, 'type': 'line', 'stack': '刷卡量',
-        'data': list(data_list)[-1].values())
+        'data': list(data_list)[-1].values()
     }
      
 # main
