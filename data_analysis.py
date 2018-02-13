@@ -25,24 +25,24 @@ async def drop_bad_data(app, loop):
         #--------------------------------------------------
     ].index
     ccnu = ccnu.drop(drop_indexes)
-    app.config.CCNU = ccnu
+    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
+    canteen['orgName'] = canteen['orgName'].apply(
+        lambda x: x.split('/')[3] + '&' + x.split('/')[-1]
+    )
+    app.config.CCNU = canteen
 
 @app.route('/api/')
 async def meta_data(request):
     # meta data
     ccnu = request.app.config.CCNU
-    # print("-------------- 上半年 ----------------")
-    # print(ccnu[ ccnu['dealDateTime'] <= '2017-06-15 00:00:00' ].info())
-    # print("-------------- 下半年 ----------------")
-    # print(ccnu[ ccnu['dealDateTime'] > '2017-06-15 00:00:00' ].info())
-    return json({"meta": ccnu.info()})
+    data_len = len(ccnu)
+    return json({"meta": { 'data_len': data_len }})
 
 @app.route('/api/max_canteen/')
 async def max_canteen(request):
     # 消费次数最多的食堂
     # + 饼图
-    ccnu = request.app.config.CCNU
-    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
+    canteen = request.app.config.CCNU
     canteen_count = canteen.groupby('canteen').size().reset_index(name="value")
     canteen_count.columns = ['name', 'value']
     data_dict = eval(canteen_count.to_json(orient='index'))
@@ -55,21 +55,20 @@ async def max_canteen(request):
 @app.route('/api/max_window/')
 async def max_window(request):
     # 刷卡次数前6的食堂窗口
-    ccnu = request.app.config.CCNU
+    canteen = request.app.config.CCNU
     loop = request.app.loop
     breakfast = ['06:30:00', '10:30:00']
     lunch = ['10:40:00', '14:00:00']
     dinner = ['17:00:00', '21:30:00']
-    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
 
     orgsb_list = await loop.run_in_executor(
-        executor, handle_org, breakfast, canteen
+        executor, handle_org, canteen, breakfast
     )
     orgsl_list = await loop.run_in_executor(
-        executor, handle_org, lunch, canteen
+        executor, handle_org, canteen, lunch,
     )
     orgsd_list = await loop.run_in_executor(
-        executor, handle_org, dinner, canteen
+        executor, handle_org, canteen, dinner,
     )
 
     return json({
@@ -90,9 +89,8 @@ async def max_window(request):
 @app.route('/api/deal_data/')
 async def deal_data(request):
     # 华师各食堂消费水平
-    ccnu = request.app.config.CCNU
+    canteen = request.app.config.CCNU
     loop = request.app.loop
-    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
     avg_data = canteen["transMoney"].mean().round(2),
     avg = avg_data[0]
     low = []; high = []
@@ -107,11 +105,10 @@ async def deal_data(request):
 @app.route('/api/day_canteen/')
 async def day_canteen(request):
     # 华师主要食堂每日刷卡量对比
-    ccnu = request.app.config.CCNU
+    canteen = request.app.config.CCNU
     loop = request.app.loop
-    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
-    canteen['dealDateTime'] = pd.to_datetime(canteen['dealDateTime'])
-    canteen['day'] = canteen['dealDateTime'].apply(lambda x: x.dayofweek)
+    canteen['dealDay'] = pd.to_datetime(canteen['dealDateTime'])
+    canteen['day'] = canteen['dealDay'].apply(lambda x: x.dayofweek)
     canteens = ["东一餐厅(旧201508)", "东一餐厅新", "东二餐厅", "北区教工餐厅",
             "南湖校区餐厅", "博雅园餐厅", "学子中西餐厅", "学子餐厅",
             "桂香园餐厅新", "沁园春餐厅"]
@@ -123,19 +120,14 @@ async def day_canteen(request):
 
 # cpu intensive tasks
 ## running in thread pool
-def handle_org(time, canteen):
+def handle_org(canteen, time):
     canteen_x = canteen[
         (canteen['dealDateTime'].str.split().str[1] >= time[0]) &
         (canteen['dealDateTime'].str.split().str[1] <= time[-1])
     ]
     orgsx = canteen_x.groupby('orgName').size().reset_index(name="value")
     orgsx_dict = eval(orgsx.sort_values(by=['value']).tail(6).to_json(orient='index'))
-    orgsx_list = []
-    for item in orgsx_dict.values():
-        orgName_list = item["orgName"].split('/')
-        item["orgName"] = orgName_list[3] + orgName_list[-1]
-        orgsx_list.append(item)
-    return orgsx_list
+    return orgsx_dict.values()
 
 def handle_trans(canteen, name, low, high, avg):
     avgd = canteen[ (canteen["canteen"]==name) ]["transMoney"].mean().round(2)
@@ -149,9 +141,10 @@ def handle_day(canteen, name):
     # 'dealDateTime'
     day_count = canteen[ canteen['canteen']==name ].groupby('day').size().reset_index()
     data_dict = eval(day_count.to_json())
+    data_list = list(data_dict.values())
     return {
         'name': name, 'type': 'line', 'stack': '刷卡量',
-        'data': list(list(data_dict.values())[-1].values())
+        'data': list(data_list)[-1].values())
     }
      
 # main
