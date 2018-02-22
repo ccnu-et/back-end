@@ -1,56 +1,8 @@
-import pandas as pd
-from sanic import Sanic
-from sanic.response import json
-from sanic_cors import CORS, cross_origin
-from concurrent.futures import ThreadPoolExecutor
-from functools import wraps
-
-app = Sanic()
-CORS(app)
-app.config.CCNU = pd.read_csv('ccnu_data.csv')
-executor = ThreadPoolExecutor(max_workers=15)
-
-def ccnu_loop(f):
-    @wraps(f)
-    async def decorator(*args, **kwargs):
-        ccnu = args[0].app.config.CCNU
-        loop = args[0].app.loop
-        canteen = ccnu.copy()
-        return await f(*args, canteen, loop, **kwargs)
-    return decorator
-
-@app.listener('before_server_start')
-async def drop_bad_data(app, loop):
-    # 删除错误数据
-    ccnu = app.config.CCNU
-    drop_indexes = ccnu[
-        #--------------------------------------------------
-        (   ccnu['orgName'].str.contains("超市"))         |
-        (   ccnu['orgName'].str.contains("保卫处"))       |
-        (   ccnu['orgName'].str.contains("后勤处"))       |
-        (   ccnu['orgName'].str.contains("信息化办公室")) |
-        (   ccnu['orgName']      ==      '华中师范大学')  |
-        (   ccnu['transMoney'] <= 0                     ) |
-        (   ccnu['transMoney'] >= 90                    )#|
-        #--------------------------------------------------
-    ].index
-    ccnu = ccnu.drop(drop_indexes)
-    canteen = ccnu[ ccnu['orgName'].str.contains("饮食中心") ]
-    canteen['orgName'] = canteen['orgName'].apply(
-        lambda x: x.split('/')[3] + '&' + x.split('/')[-1]
-    )
-    app.config.CCNU = canteen
-
-@app.route('/api/')
-@ccnu_loop
-async def meta_data(request, canteen, loop):
-    # meta data
-    data_len = len(canteen)
-    return json({"meta": { 'data_len': data_len }})
+from app import app, ccnu_loop, executor, json, pd
 
 @app.route('/api/max_canteen/')
 @ccnu_loop
-async def max_canteen(request, canteen, loop):
+async def max_canteen(request, canteen, cos, loop):
     # 消费次数最多的食堂
     # + 饼图
     canteen_count = canteen.groupby('canteen').size().reset_index(name="value")
@@ -64,7 +16,7 @@ async def max_canteen(request, canteen, loop):
 
 @app.route('/api/max_window/')
 @ccnu_loop
-async def max_window(request, canteen, loop):
+async def max_window(request, canteen, cos, loop):
     # 刷卡次数前6的食堂窗口
     breakfast = ['06:30:00', '10:30:00']
     lunch = ['10:40:00', '14:00:00']
@@ -97,7 +49,7 @@ async def max_window(request, canteen, loop):
 
 @app.route('/api/deal_data/')
 @ccnu_loop
-async def deal_data(request, canteen, loop):
+async def deal_data(request, canteen, cos, loop):
     # 华师各食堂消费水平
     avg_data = canteen["transMoney"].mean().round(2),
     avg = avg_data[0]
@@ -112,7 +64,7 @@ async def deal_data(request, canteen, loop):
 
 @app.route('/api/day_canteen/')
 @ccnu_loop
-async def day_canteen(request, canteen, loop):
+async def day_canteen(request, canteen, cos, loop):
     # 华师主要食堂每日刷卡量对比
     canteen['dealDay'] = pd.to_datetime(canteen['dealDateTime'])
     canteen['day'] = canteen['dealDay'].apply(lambda x: x.dayofweek)
@@ -153,10 +105,3 @@ def handle_day(canteen, name):
         'name': name, 'type': 'line', 'stack': '刷卡量',
         'data': list(data_list)[-1].values()
     }
-     
-# main
-if __name__ == '__main__':
-    # from aoiklivereload import LiveReloader
-    # reloader = LiveReloader()
-    # reloader.start_watcher_thread()
-    app.run(host='0.0.0.0', port=3000, debug=True)
