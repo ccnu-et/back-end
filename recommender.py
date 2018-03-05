@@ -20,28 +20,6 @@ async def recommender(request, canteen, cos, loop):
     borgs = borgs[0].tolist()
     lorgs = lorgs[0].tolist()
     dorgs = dorgs[0].tolist()
-    """
-    bsrcs = []; lsrcs = []; dsrcs = []
-    for borg in borgs:
-        try:
-            bsrc = await get_src(borg)
-        except:
-            bsrc = "https://avatars0.githubusercontent.com/u/23288182?s=460&v=4"
-        bsrcs.append(bsrc)
-    for lorg in lorgs:
-        try:
-            lsrc = await get_src(lorg)
-        except:
-            lsrc = "https://avatars0.githubusercontent.com/u/23288182?s=460&v=4"
-        lsrcs.append(lsrc)
-    for dorg in dorgs:
-        try:
-            dsrc = await get_src(dorg)
-        except:
-            dsrc = "https://avatars0.githubusercontent.com/u/23288182?s=460&v=4"
-        dsrcs.append(dsrc)
-    print(len(bsrcs))
-    """
     bsrcs = lsrcs = dsrcs = ["", "", ""]
     json_data = {
         'breakfast': {
