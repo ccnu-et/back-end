@@ -1,16 +1,33 @@
+import asyncio
 import aiohttp
-from app import app, ccnu_loop, executor, json, pd
+from data_analysis import ccnu_cache, executor
 
-@app.route('/api/recommender/', methods=['GET'])
-@ccnu_loop
-async def recommender(request, canteen, cos, loop):
+@ccnu_cache
+async def recommender(rds, canteen, cos):
     # 依据食堂窗口名称, 提取标签做推荐
     # 使用TF-IDF矩阵, 计算余弦相似度
-    sid = request.args.get('sid')
+    loop = asyncio.get_event_loop()
+    data_dict = {}
+    # sids = list(canteen.userId.unique())
+    sids = [2016210001]
+    for sid in sids:
+        try:
+            data = await sid_recommender(sid, canteen, cos, loop)
+        except Exception as e:
+            print("<Error> " + e)
+            continue
+        data_dict[sid] = data
+        print("<Info> " + str(sid))
+    return data_dict
+
+async def sid_recommender(sid, canteen, cos, loop):
     orgs = await loop.run_in_executor(
         executor, handle_orglike, sid, canteen
     )
     orgName = canteen.groupby('orgName').size().reset_index(name="value")
+    report, info = await loop.run_in_executor(
+        executor, handle_report, sid, canteen
+    )
     recommends = await loop.run_in_executor(
         executor, handle_recommendations, orgName, cos, orgs
     )
@@ -21,21 +38,22 @@ async def recommender(request, canteen, cos, loop):
     lorgs = lorgs[0].tolist()
     dorgs = dorgs[0].tolist()
     bsrcs = lsrcs = dsrcs = ["", "", ""]
-    json_data = {
+    return {
+        'info': info,
+        'report': report,
         'breakfast': {
-            'head': "早餐你的最爱是 " + orgs[0] + ",推荐你尝尝以下窗口",
+            'head': "<h2>早餐你的最爱是 " + orgs[0] + ",推荐你尝尝以下窗口</h2><br/>",
             'recommends': json_format(borgs, bindices, bsrcs)
         },
         'lunch': {
-            'head': "中餐你的最爱是 " + orgs[1] + ",推荐你尝尝以下窗口",
+            'head': "<h2>中餐你的最爱是 " + orgs[1] + ",推荐你尝尝以下窗口</h2>",
             'recommends': json_format(lorgs, lindices, lsrcs)
         },
         'dinner': {
-            'head': "晚餐你的最爱是 " + orgs[2] + ",推荐你尝尝以下窗口",
+            'head': "<h2>晚餐你的最爱是 " + orgs[2] + ",推荐你尝尝以下窗口</h2>",
             'recommends': json_format(dorgs, dindices, dsrcs)
         }
     }
-    return json(json_data)
 
 async def get_src(org):
     import json
@@ -96,12 +114,48 @@ def handle_orglike(sid, canteen):
     breakfast_orgs = breakfast_canteen.groupby('orgName').size().reset_index(name="value")
     lunch_orgs = lunch_canteen.groupby('orgName').size().reset_index(name="value")
     dinner_orgs = dinner_canteen.groupby('orgName').size().reset_index(name="value")
-    re_breakfast = eval(breakfast_orgs.sort_values(by=['value']).tail(1).to_json())
-    re_lunch = eval(lunch_orgs.sort_values(by=['value']).tail(1).to_json())
-    re_dinner = eval(dinner_orgs.sort_values(by=['value']).tail(1).to_json())
-    return list(re_breakfast['orgName'].values()) + \
-           list(re_lunch['orgName'].values()) + \
-           list(re_dinner['orgName'].values())
+    re_breakfast = list(eval(
+        breakfast_orgs.sort_values(by=['value']).tail(1).to_json()
+    )['orgName'].values()) or ['&']
+    re_lunch = list(eval(
+        lunch_orgs.sort_values(by=['value']).tail(1).to_json()
+    )['orgName'].values()) or ['&']
+    re_dinner = list(eval(
+        dinner_orgs.sort_values(by=['value']).tail(1).to_json()
+    )['orgName'].values()) or ['&']
+    return re_breakfast + re_lunch + re_dinner
+
+def handle_report(sid, canteen):
+    # 个人食堂消费报告
+    """
+    --5. 各个食堂消费占比图
+    """
+    stu = canteen[ (canteen['userId'] == sid) ]
+    maxval = stu['transMoney'].max()
+    maxdate = stu[ (stu['transMoney'] == maxval) ]['dealDateTime'].to_string().split()
+    stu['month'] = stu['dealDateTime'].apply(
+        lambda x: x.split()[0].split('-')[1]
+    )
+    month = stu.groupby('month')
+    month_max = month['transMoney'].sum().idxmax()
+    month_max_val = round(month['transMoney'].sum().max())
+    month_min_val = round(month['transMoney'].sum().min())
+    if month_min_val == 0:
+        month_min_val = 1
+    month_val = round(month_max_val / month_min_val)
+    page1 = "<h2>%s, %s你在食堂吃的最放肆的一顿一共花了%s元, \
+           你最土豪的月份是%s月, 消费高达%s元, 竟是最低月份的%s倍.</h2>" % \
+            (maxdate[1], maxdate[2], maxval, month_max, month_max_val, month_val)
+    all_val = round(stu['transMoney'].sum())
+    stus = canteen.groupby('userId')
+    stus_l = stus['transMoney'].sum().to_string().split('\n')
+    stus_l = sorted(stus_l[1:], key=lambda x: x.split()[1])
+    ranking = stus_l.index(str(sid) + '    ' + str(stu['transMoney'].sum()))
+    percent = str(round(ranking / len(stus_l) * 100)) + "%"
+    page2 = "<h2>你在食堂共消费%s元, 超过了全校%s的人, 全校排名第%s名.</h2>" % \
+            (all_val, percent, ranking)
+    info = stu.userName[0] + "    " + str(sid)
+    return page1 + page2, info
 
 def json_format(orgNames, scores, srcs):
     z = zip(orgNames, scores, srcs)

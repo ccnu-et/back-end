@@ -38,3 +38,11 @@ async def api_deal_data(request, resp):
 @get_resp
 async def api_day_canteen(request, resp):
     return json(eval(resp))
+
+@app.route('/api/recommender/')
+@get_resp
+async def api_recommender(request, resp):
+    sid = request.args.get('sid')
+    data_dict = eval(resp)
+    data = data_dict.get(int(sid))
+    return json(data)

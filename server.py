@@ -3,16 +3,18 @@ import asyncio
 import aioredis
 from app import app
 from data_analysis import *
+from recommender import *
 
 async def handle_data():
     rds = await aioredis.create_redis(os.getenv('CCNU_RDS') or
             'redis://127.0.0.1:6380', loop=loop)
-    canteen = await init_dataset()
+    canteen, cos = await init_dataset()
     await meta_data(rds, canteen)
     await max_canteen(rds, canteen)
     await max_window(rds, canteen)
     await deal_data(rds, canteen)
     await day_canteen(rds, canteen)
+    await recommender(rds, canteen, cos)
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

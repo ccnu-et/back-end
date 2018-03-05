@@ -58,7 +58,7 @@ async def init_dataset():
     cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
     # app.config.CCNU = canteen
     # app.config.COS = cosine_sim
-    return canteen
+    return canteen, cosine_sim
 
 @ccnu_cache
 async def meta_data(rds, canteen):
@@ -141,6 +141,11 @@ async def day_canteen(rds, canteen):
         json_dict = await loop.run_in_executor(executor, handle_day, canteen, name)
         json_list.append(json_dict)
     return json_list
+
+@ccnu_cache
+async def stu_data(rds, canteen):
+    # 个人消费分析
+    pass
 
 # cpu intensive tasks
 ## running in thread pool
