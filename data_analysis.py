@@ -17,6 +17,7 @@ def ccnu_cache(f):
         json_data = await f(*args, **kwargs)
         # cache
         await rds.set('api_' + f.__name__, str(json_data))
+        return await f(*args, **kwargs)
     return decorator
 
 async def init_dataset():
@@ -141,11 +142,6 @@ async def day_canteen(rds, canteen):
         json_dict = await loop.run_in_executor(executor, handle_day, canteen, name)
         json_list.append(json_dict)
     return json_list
-
-@ccnu_cache
-async def stu_data(rds, canteen):
-    # 个人消费分析
-    pass
 
 # cpu intensive tasks
 ## running in thread pool

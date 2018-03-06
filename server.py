@@ -11,10 +11,10 @@ async def handle_data():
     canteen, cos = await init_dataset()
     await meta_data(rds, canteen)
     await max_canteen(rds, canteen)
-    await max_window(rds, canteen)
+    max_windows = await max_window(rds, canteen)
     await deal_data(rds, canteen)
     await day_canteen(rds, canteen)
-    await recommender(rds, canteen, cos)
+    await recommender(rds, canteen, cos, max_windows)
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
