@@ -9,7 +9,7 @@ async def recommender(rds, canteen, cos, max_windows):
     loop = asyncio.get_event_loop()
     data_dict = {}
     sids = list(canteen.userId.unique())
-    # sids = [2016210324]
+    # sids = [2016210324, 2016210007, 2016210001]
     for sid in sids:
         try:
             data = await sid_recommender(sid, canteen, cos, loop, max_windows)
@@ -152,12 +152,12 @@ def handle_report(sid, canteen):
     all_val = round(stu['transMoney'].sum())
     stus = canteen.groupby('userId')
     stus_l = stus['transMoney'].sum().to_string().split('\n')
-    stus_l = sorted(stus_l[1:], key=lambda x: x.split()[1])
+    stus_l = sorted(stus_l[1:], key=lambda x: float(x.split()[1]))
     slen = len(stus_l[-1])
     transMoney = '%.02f' % stu['transMoney'].sum()
     stu_mon = str(sid) + ' '*(slen-len(transMoney)-10) + transMoney
-    ranking = stus_l.index(stu_mon)
-    percent = str(round(ranking / len(stus_l) * 100)) + "%"
+    ranking = len(stus_l) - stus_l.index(stu_mon)
+    percent = str(100 - round(ranking / len(stus_l) * 100)) + "%"
     page2 = "<h2>你在食堂共消费%s元, 超过了全校%s的人, 全校排名第%s名.</h2><br>" % \
             (all_val, percent, ranking)
     info = stu.userName.to_string().split('\n')[0].split()[1] + " " + str(sid)
